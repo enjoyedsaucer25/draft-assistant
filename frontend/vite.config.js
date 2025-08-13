@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'https://<your-codespace>-8000.app.github.dev',
+        target: process.env.VITE_API_URL || 'https://silver-disco-v666r7vp5wpj3xv4j-8000.app.github.dev',
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/api/, '')

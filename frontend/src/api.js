@@ -1,16 +1,38 @@
-const API = '/api';
+// frontend/src/api.js
+const BASE = import.meta.env.VITE_API_URL || '';   // If '', we expect a dev proxy at /api
+const API  = BASE ? BASE : '/api';
 
-async function get(path)  { const r = await fetch(`${API}${path}`); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-async function post(path, body) { const r = await fetch(`${API}${path}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body ?? {}) }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-async function del_(path) { const r = await fetch(`${API}${path}`, { method:'DELETE' }); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+// Safe JSON parser: returns {} for empty; throws with context on bad JSON
+async function parseJSON(res) {
+  const text = await res.text();             // don't call res.json() directly
+  if (!text) return {};                      // handle 204/empty bodies safely
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Bad JSON from ${res.url} (status ${res.status}): ${text.slice(0,200)}`);
+  }
+}
+
+async function request(path, { method='GET', body, headers={} } = {}) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(()=>'');
+    throw new Error(`HTTP ${res.status} on ${path}: ${msg || res.statusText}`);
+  }
+  return parseJSON(res);
+}
 
 export const api = {
-  health: () => get('/health'),
-  teamsInit: () => post('/teams/init'),
-  teamsList: () => get('/teams'),
-  suggestions: (pos=null) => get(`/suggestions${pos ? `?position=${encodeURIComponent(pos)}`:''}`),
-  picksList: () => get('/picks'),
-  makePick: (payload) => post('/picks', payload),
-  undoPick: (pickId) => del_(`/picks/${pickId}`),
-  importDemo: (token) => fetch('/api/admin/import/demo', { method:'POST', headers: token ? { 'x-token': token } : {} }).then(r => r.json()),
+  health: () => request('/health'),
+  teamsInit: () => request('/teams/init', { method: 'POST' }),
+  teamsList: () => request('/teams'),
+  suggestions: (pos=null) => request(`/suggestions${pos ? `?position=${encodeURIComponent(pos)}` : ''}`),
+  picksList: () => request('/picks'),
+  makePick: (payload) => request('/picks', { method: 'POST', body: payload }),
+  undoPick: (pickId) => request(`/picks/${pickId}`, { method: 'DELETE' }),
+  importDemo: () => request('/admin/import/demo', { method: 'POST' }),
 };
