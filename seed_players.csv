@@ -1,0 +1,7 @@
+player_id,season,clean_name,position,team,bye_week,ecr_rank,ecr_pos_rank,tier
+rb.cmcc,2025,Christian McCaffrey,RB,SF,9,1,1,1
+wr.jchase,2025,Ja'Marr Chase,WR,CIN,12,2,1,1
+wr.cupl,2025,CeeDee Lamb,WR,DAL,7,3,2,1
+rb.brobinson,2025,Bijan Robinson,RB,ATL,12,4,2,1
+wr.asb,2025,Amon-Ra St. Brown,WR,DET,9,5,3,1
+qb.jallen,2025,Josh Allen,QB,BUF,12,20,1,2
