@@ -5,6 +5,10 @@ from ..db import get_db
 from ..config.settings import settings
 from ..ingest.csv_importer import import_from_csv
 from .. import models
+from ..ingest.sources.sleeper_players import import_sleeper_players
+from ..ingest.sources.fantasypros_ecr import import_fp_csv, import_fp_overall_html
+from ..ingest.sources.fantasypros_adp import import_fp_adp_csv
+from ..ingest.sources.injuries_cbs import import_cbs_injuries
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -45,3 +49,22 @@ def admin_import_demo(db: Session = Depends(get_db)):
             cr.ecr_rank=r["ecr_rank"]; cr.ecr_pos_rank=r["ecr_pos_rank"]; cr.tier=r["tier"]; cr.source="demo"
     db.commit()
     return {"ok": True, "imported": len(demo)}
+@router.post("/import/sleeper_players", dependencies=[Depends(require_admin)])
+def admin_import_sleeper_players(season: int, db: Session = Depends(get_db)):
+    return import_sleeper_players(db, season)
+
+@router.post("/import/fp_ecr_csv", dependencies=[Depends(require_admin)])
+def admin_import_fp_ecr_csv(season: int, path: str, db: Session = Depends(get_db)):
+    return import_fp_csv(db, season, path)
+
+@router.post("/import/fp_ecr_html", dependencies=[Depends(require_admin)])
+def admin_import_fp_ecr_html(season: int, url: str, db: Session = Depends(get_db)):
+    return import_fp_overall_html(db, season, url)
+
+@router.post("/import/fp_adp_csv", dependencies=[Depends(require_admin)])
+def admin_import_fp_adp_csv(season: int, path: str, source: str = "fp_composite", db: Session = Depends(get_db)):
+    return import_fp_adp_csv(db, season, path, source_name=source)
+
+@router.post("/import/injuries_cbs", dependencies=[Depends(require_admin)])
+def admin_import_injuries_cbs(season: int, db: Session = Depends(get_db)):
+    return import_cbs_injuries(db, season)

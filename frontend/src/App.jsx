@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_EFFECTIVE } from "./api";
 import { Section } from "./components/Section";
 import { PlayerRow } from "./components/PlayerRow";
+import { PlayerTable } from "./components/PlayerTable";
 import { POSITIONS } from "./lib/constants";
 
 export default function App() {
@@ -12,6 +13,16 @@ export default function App() {
   const [suggestTop, setSuggestTop] = useState([]);
   const [suggestNext, setSuggestNext] = useState([]);
   const [positionFilter, setPositionFilter] = useState("");
+  const [playersTable, setPlayersTable] = useState([]);
+  const [season] = useState(2025);
+
+  // Admin import helpers
+  const [ecrCsvPath, setEcrCsvPath] = useState("");
+  const [adpCsvPath, setAdpCsvPath] = useState("");
+  const [ecrHtmlUrl, setEcrHtmlUrl] = useState(
+    "https://www.fantasypros.com/nfl/rankings/consensus-cheatsheets.php"
+  );
+
   const [makePickForm, setMakePickForm] = useState({
     round_no: 1,
     overall_no: 1,
@@ -33,11 +44,21 @@ export default function App() {
       setPicks(pk);
       setSuggestTop(sug.top || []);
       setSuggestNext(sug.next || []);
+      await loadPlayersTable();
     } catch (e) {
       console.error(e);
       alert("Error: " + e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPlayersTable = async () => {
+    try {
+      const rows = await api.playersEnriched(season, positionFilter || "");
+      setPlayersTable(rows);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -47,12 +68,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // refresh suggestions when position changes
+    // when position changes, refresh suggestions and enriched table
     (async () => {
       try {
         const sug = await api.suggestions(positionFilter || null);
         setSuggestTop(sug.top || []);
         setSuggestNext(sug.next || []);
+        await loadPlayersTable();
       } catch (e) {
         console.error(e);
       }
@@ -90,6 +112,27 @@ export default function App() {
     await reloadAll();
   };
 
+  const onTier = async (row, tierVal) => {
+    await api.setTier(row.player_id, tierVal);
+    await loadPlayersTable();
+  };
+
+  const onNote = async (row, text) => {
+    await api.addNote(row.player_id, text, null);
+    alert("Note added.");
+  };
+
+  // Admin import buttons
+  const runImport = async (fn, label) => {
+    try {
+      await fn();
+      await reloadAll();
+      alert(`${label}: ok`);
+    } catch (e) {
+      alert(`${label}: ${e.message}`);
+    }
+  };
+
   return (
     <div
       style={{
@@ -100,7 +143,7 @@ export default function App() {
         minHeight: "100vh",
       }}
     >
-      <h2>Draft Room (Minimal)</h2>
+      <h2>Draft Room</h2>
       <div style={{ marginBottom: 12, opacity: 0.85 }}>
         API: <code>{API_BASE_EFFECTIVE || "(proxy /api)"}</code>
         &nbsp;|&nbsp; Health: {health ? "OK" : "…"}
@@ -112,11 +155,25 @@ export default function App() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Section title="Setup">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button onClick={initTeams}>Init 12 Teams</button>
             <button
+              onClick={() =>
+                runImport(() => api.importSleeperPlayers(season), "Sleeper Players")
+              }
+            >
+              Import Sleeper Players
+            </button>
+            <button
+              onClick={() =>
+                runImport(() => api.importInjuriesCBS(season), "CBS Injuries")
+              }
+            >
+              Import CBS Injuries
+            </button>
+            <button
               onClick={async () => {
-                await api.importDemo();
+                await api.importDemo(); // still handy for quick testing
                 await reloadAll();
               }}
             >
@@ -126,6 +183,7 @@ export default function App() {
               Teams: {teams.length} | Picks: {picks.length}
             </span>
           </div>
+
           <div style={{ marginTop: 8 }}>
             <label>Position filter:&nbsp;</label>
             <select
@@ -139,6 +197,60 @@ export default function App() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div style={{ marginTop: 12, textAlign: "left" }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>FantasyPros Imports (optional)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+              <input
+                placeholder="Path to FantasyPros ECR CSV (on server)"
+                value={ecrCsvPath}
+                onChange={(e) => setEcrCsvPath(e.target.value)}
+              />
+              <button
+                onClick={() =>
+                  runImport(
+                    () => api.importFPECRCsv(season, ecrCsvPath),
+                    "FP ECR CSV"
+                  )
+                }
+              >
+                Import ECR CSV
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+              <input
+                placeholder="FantasyPros ECR overall URL (HTML scrape fallback)"
+                value={ecrHtmlUrl}
+                onChange={(e) => setEcrHtmlUrl(e.target.value)}
+              />
+              <button
+                onClick={() =>
+                  runImport(() => api.importFPECRHtml(season, ecrHtmlUrl), "FP ECR HTML")
+                }
+              >
+                Scrape ECR HTML
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+              <input
+                placeholder="Path to FantasyPros ADP CSV (on server)"
+                value={adpCsvPath}
+                onChange={(e) => setAdpCsvPath(e.target.value)}
+              />
+              <button
+                onClick={() =>
+                  runImport(
+                    () => api.importFPADPCsv(season, adpCsvPath, "fp_composite"),
+                    "FP ADP CSV"
+                  )
+                }
+              >
+                Import ADP CSV
+              </button>
+            </div>
           </div>
         </Section>
 
@@ -225,6 +337,15 @@ export default function App() {
               <PlayerRow key={p.player_id} p={p} onPick={onPick} />
             ))
           )}
+        </Section>
+
+        <Section title="Players (Rank/Tier/ADP/Injuries)">
+          <PlayerTable
+            rows={playersTable}
+            onPick={onPick}
+            onTier={onTier}
+            onNote={onNote}
+          />
         </Section>
 
         <Section title="Picks">

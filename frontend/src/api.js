@@ -36,7 +36,6 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
   });
 
   if (!res.ok) {
-    // Try to surface useful text from the response
     let msg = "";
     try {
       msg = await res.text();
@@ -68,15 +67,69 @@ export const api = {
     return request(`/suggestions${q}`, opts);
   },
 
-  // Admin (now auto-sends x-token if present)
+  // Admin imports (new)
   importDemo: () =>
     request("/admin/import/demo", { method: "POST", headers: ADMIN_HEADERS }),
-
   importCsv: (absPath) =>
     request(`/admin/import/csv?path=${encodeURIComponent(absPath)}`, {
       method: "POST",
       headers: ADMIN_HEADERS,
     }),
+  importSleeperPlayers: (season) =>
+    request(`/admin/import/sleeper_players?season=${season}`, {
+      method: "POST",
+      headers: ADMIN_HEADERS,
+    }),
+  importFPECRCsv: (season, path) =>
+    request(
+      `/admin/import/fp_ecr_csv?season=${season}&path=${encodeURIComponent(path)}`,
+      { method: "POST", headers: ADMIN_HEADERS }
+    ),
+  importFPECRHtml: (season, url) =>
+    request(
+      `/admin/import/fp_ecr_html?season=${season}&url=${encodeURIComponent(url)}`,
+      { method: "POST", headers: ADMIN_HEADERS }
+    ),
+  importFPADPCsv: (season, path, source = "fp_composite") =>
+    request(
+      `/admin/import/fp_adp_csv?season=${season}&path=${encodeURIComponent(
+        path
+      )}&source=${encodeURIComponent(source)}`,
+      { method: "POST", headers: ADMIN_HEADERS }
+    ),
+  importInjuriesCBS: (season) =>
+    request(`/admin/import/injuries_cbs?season=${season}`, {
+      method: "POST",
+      headers: ADMIN_HEADERS,
+    }),
+
+  // Enriched players
+  playersEnriched: (season, position = "") =>
+    request(
+      `/meta/players_enriched?season=${season}${
+        position ? `&position=${encodeURIComponent(position)}` : ""
+      }`
+    ),
+
+  // Edits
+  setTier: (player_id, tier) =>
+    request(
+      `/edits/tier/${encodeURIComponent(player_id)}?tier=${
+        tier ?? ""
+      }`,
+      { method: "POST" }
+    ),
+  addNote: (player_id, text, team_slot_id = null) =>
+    request(
+      `/edits/notes?player_id=${encodeURIComponent(
+        player_id
+      )}&text=${encodeURIComponent(text)}${
+        team_slot_id ? `&team_slot_id=${team_slot_id}` : ""
+      }`,
+      { method: "POST" }
+    ),
+  listNotes: (player_id) =>
+    request(`/edits/notes?player_id=${encodeURIComponent(player_id)}`),
 };
 
 // Optional: export the effective base for quick debugging in UI header
