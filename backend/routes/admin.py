@@ -8,9 +8,10 @@ from .. import models
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-def require_admin(x_token: str | None = Header(None)):
+def require_admin(x_token: str | None = Header(None, description="admin token for /admin/* (header name: x-token)")):
     if settings.admin_token and x_token != settings.admin_token:
         raise HTTPException(status_code=401, detail="unauthorized")
+
 
 @router.post("/import/csv", dependencies=[Depends(require_admin)])
 def admin_import_csv(path: str, db: Session = Depends(get_db)):

@@ -6,7 +6,6 @@ from .. import models, schemas
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
 @router.get("", response_model=schemas.SuggestionOut)
-@router.get("/", response_model=schemas.SuggestionOut)
 def suggestions(
     limit_top: int = Query(3, ge=1, le=10),
     limit_next: int = Query(10, ge=1, le=30),
