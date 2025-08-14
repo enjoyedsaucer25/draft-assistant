@@ -6,11 +6,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'https://silver-disco-v666r7vp5wpj3xv4j-8000.app.github.dev',
+        target: 'https://jubilant-parakeet-jjjj7w5rgqvxfp9wx-8000.app.github.dev/', // UPDATE if your 8000 URL changed
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
-      }
-    }
-  }
+        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+    },
+  },
 })

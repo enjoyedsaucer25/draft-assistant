@@ -8,8 +8,8 @@ app = FastAPI(title="Draft Assistant API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_origins=["https://silver-disco-v666r7vp5wpj3xv4j-5173.app.github.dev"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
