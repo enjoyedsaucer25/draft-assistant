@@ -4,7 +4,7 @@ from .. import models
 
 def upsert_player_and_rank(row, db: Session):
     # Upsert Player
-    p = db.query(models.Player).get(row["player_id"])
+    p = db.get(models.Player, row["player_id"])
     if not p:
         p = models.Player(
             player_id=row["player_id"],
