@@ -1,0 +1,53 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Backend: FastAPI (debug, no reload)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/uvicorn",
+            "windows": {
+                "program": "${workspaceFolder}\\.venv\\Scripts\\uvicorn.exe"
+            },
+            "args": [
+                "backend.app:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000"
+            ],
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Backend: FastAPI (attach to reload process)",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "Frontend: Vite + Chrome",
+            "type": "pwa-chrome",
+            "request": "launch",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/frontend",
+            "preLaunchTask": "Frontend: Vite dev"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack (API + Web, no reload)",
+            "configurations": [
+                "Backend: FastAPI (debug, no reload)",
+                "Frontend: Vite + Chrome"
+            ]
+        }
+    ]
+}
