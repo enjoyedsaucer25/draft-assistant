@@ -1,49 +1,48 @@
 # backend/run_debug.py
+"""
+Launch the FastAPI app under a debugpy listener, tolerating port collisions.
+
+Usage (Windows bash or PowerShell):
+    python -m backend.run_debug
+or:
+    python backend/run_debug.py
+
+Then attach VS Code to "Python: Remote Attach" on localhost:DA_DEBUG_PORT (default 5678).
+"""
+from __future__ import annotations
+
 import os
+import socket
 import sys
-from pathlib import Path
+
+import debugpy
 import uvicorn
 
-# Ensure the project root is on sys.path so "import backend.*" works
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-def in_reload_worker() -> bool:
-    """
-    Only start debugpy in the *worker* process (not the reloader parent).
-    Uvicorn with --reload sets WATCHFILES_RESTARTED in the worker.
-    Also check common fallbacks used by other reloaders.
-    """
-    if os.environ.get("WATCHFILES_RESTARTED") is not None:
-        return True
-    if os.environ.get("RUN_MAIN") == "true":
-        return True
-    if os.environ.get("UVICORN_RELOAD_PROCESS") == "true":
-        return True
-    return False
-
-def main():
-    # Start debugpy only in the worker process
-    if in_reload_worker():
+def find_open_port(start: int = 5678, limit: int = 50) -> int:
+    for p in range(start, start + limit):
         try:
-            import debugpy  # installed in your venv
-            port = int(os.environ.get("DEBUGPY_PORT", "5678"))
-            debugpy.listen(("127.0.0.1", port))
-            print(f">> debugpy listening on {port} (attach from VS Code)")
-        except Exception as e:
-            print(f">> debugpy disabled: {e}")
-    else:
-        print(">> reloader parent process (no debugpy listener)")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("0.0.0.0", p))
+                return p
+        except OSError:
+            continue
+    return start
 
-    # Use package path; this now works regardless of current directory
-    uvicorn.run(
-        "backend.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        reload_dirs=["backend"],
-    )
+
+def main() -> None:
+    port = int(os.getenv("DA_DEBUG_PORT", "5678"))
+    port = find_open_port(port, 50)
+    print(f"[debug] starting debugpy on 0.0.0.0:{port}")
+    debugpy.listen(("0.0.0.0", port))
+    if os.getenv("DA_DEBUG_WAIT", "0") == "1":
+        print("[debug] waiting for debugger attach...")
+        debugpy.wait_for_client()
+
+    # Make backend importable in both direct and module modes
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    uvicorn.run("backend.app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
+
 
 if __name__ == "__main__":
     main()

@@ -1,19 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+# backend/routes/admin.py
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 import os
+
 from ..db import get_db
 from ..config.settings import settings
 from ..ingest.csv_importer import import_from_csv
 from .. import models
 from ..ingest.sources.sleeper_players import import_sleeper_players
-from ..ingest.sources.fantasypros_ecr import (
-    import_fp_csv,
-    import_fp_overall_html,
-    import_fp_csv_from_url,
-    import_fp_ecr_auto,
-)
-from ..ingest.sources.fantasypros_adp import import_fp_adp_csv
 from ..ingest.sources.injuries_cbs import import_cbs_injuries
+
+# Optional fantasypros imports—gated by env flag
+if settings.enable_fp_imports:
+    from ..ingest.sources.fantasypros_ecr import (
+        import_fp_csv,
+        import_fp_overall_html,
+        import_fp_csv_from_url,
+        import_fp_ecr_auto,
+    )
+    from ..ingest.sources.fantasypros_adp import import_fp_adp_csv
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -27,7 +32,7 @@ def admin_import_csv(path: str, db: Session = Depends(get_db)):
     if not os.path.exists(path):
         raise HTTPException(status_code=400, detail=f"File not found: {path}")
     result = import_from_csv(path, db)
-    if result["errors"]:
+    if result.get("errors"):
         raise HTTPException(status_code=400, detail=result)
     return {"ok": True, "result": result}
 
@@ -59,32 +64,30 @@ def admin_import_demo(db: Session = Depends(get_db)):
 def admin_import_sleeper_players(season: int, db: Session = Depends(get_db)):
     return import_sleeper_players(db, season)
 
-@router.post("/import/fp_ecr_csv", dependencies=[Depends(require_admin)])
-def admin_import_fp_ecr_csv(season: int, path: str, db: Session = Depends(get_db)):
-    return import_fp_csv(db, season, path)
-
-@router.post("/import/fp_ecr_html", dependencies=[Depends(require_admin)])
-def admin_import_fp_ecr_html(season: int, url: str, db: Session = Depends(get_db)):
-    return import_fp_overall_html(db, season, url)
-
-@router.post("/import/fp_ecr_url", dependencies=[Depends(require_admin)])
-def admin_import_fp_ecr_url(season: int, url: str, db: Session = Depends(get_db)):
-    """Directly fetch CSV from a FantasyPros URL (best-effort)."""
-    return import_fp_csv_from_url(db, season, url)
-
-@router.post("/import/fp_ecr_auto", dependencies=[Depends(require_admin)])
-def admin_import_fp_ecr_auto_route(season: int, path_or_url: str, db: Session = Depends(get_db)):
-    """
-    Smart import: 
-      - if path_or_url is a URL, try CSV, fallback to HTML
-      - else treat as local CSV path
-    """
-    return import_fp_ecr_auto(db, season, path_or_url)
-
-@router.post("/import/fp_adp_csv", dependencies=[Depends(require_admin)])
-def admin_import_fp_adp_csv(season: int, path: str, source: str = "fp_composite", db: Session = Depends(get_db)):
-    return import_fp_adp_csv(db, season, path, source_name=source)
-
 @router.post("/import/injuries_cbs", dependencies=[Depends(require_admin)])
 def admin_import_injuries_cbs(season: int, db: Session = Depends(get_db)):
     return import_cbs_injuries(db, season)
+
+# --- FantasyPros admin endpoints (optional) ---------------------------------
+if settings.enable_fp_imports:
+    @router.post("/import/fp_ecr_csv", dependencies=[Depends(require_admin)])
+    def admin_import_fp_ecr_csv(season: int, path: str, db: Session = Depends(get_db)):
+        return import_fp_csv(db, season, path)
+
+    @router.post("/import/fp_ecr_html", dependencies=[Depends(require_admin)])
+    def admin_import_fp_ecr_html(season: int, url: str, db: Session = Depends(get_db)):
+        return import_fp_overall_html(db, season, url)
+
+    @router.post("/import/fp_ecr_url", dependencies=[Depends(require_admin)])
+    def admin_import_fp_ecr_url(season: int, url: str, db: Session = Depends(get_db)):
+        """Directly fetch CSV from a FantasyPros URL (best-effort)."""
+        return import_fp_csv_from_url(db, season, url)
+
+    @router.post("/import/fp_ecr_auto", dependencies=[Depends(require_admin)])
+    def admin_import_fp_ecr_auto_route(season: int, path_or_url: str, db: Session = Depends(get_db)):
+        """Smart import: URL->CSV->HTML, else treat as local CSV path."""
+        return import_fp_ecr_auto(db, season, path_or_url)
+
+    @router.post("/import/fp_adp_csv", dependencies=[Depends(require_admin)])
+    def admin_import_fp_adp_csv(season: int, path: str, source: str = "fp_composite", db: Session = Depends(get_db)):
+        return import_fp_adp_csv(db, season, path, source_name=source)

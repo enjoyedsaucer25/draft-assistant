@@ -1,15 +1,11 @@
 // frontend/src/api.js
 
-// If VITE_API_URL is set, we call that directly.
-// If it's empty/undefined, we use the Vite dev proxy at "/api".
 const BASE = import.meta.env.VITE_API_URL || "";
 const API = BASE || "/api";
 
-// Normalize base + path so we never emit "//" or miss a slash.
 const join = (base, path) =>
   `${String(base).replace(/\/+$/, "")}/${String(path || "").replace(/^\/+/, "")}`;
 
-// Safe JSON parser: returns {} for empty; throws with context on bad JSON
 async function parseJSON(res) {
   const text = await res.text();
   if (!text) return {};
@@ -22,11 +18,9 @@ async function parseJSON(res) {
   }
 }
 
-// Pull admin token from env and prepare default headers
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 const ADMIN_HEADERS = ADMIN_TOKEN ? { "x-token": ADMIN_TOKEN } : {};
 
-// Core request helper with good errors
 async function request(path, { method = "GET", body, headers = {} } = {}) {
   const url = join(API, path);
   const res = await fetch(url, {
@@ -34,42 +28,31 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
     headers: { "Content-Type": "application/json", ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
-
   if (!res.ok) {
     let msg = "";
-    try {
-      msg = await res.text();
-    } catch (_) {}
+    try { msg = await res.text(); } catch { }
     throw new Error(`HTTP ${res.status} on ${url}: ${msg || res.statusText}`);
   }
-
   return parseJSON(res);
 }
 
-// Public API
 export const api = {
   health: () => request("/health"),
 
-  // Teams
   teamsInit: () => request("/teams/init", { method: "POST" }),
   teamsList: () => request("/teams"),
-  teamUpsert: (payload) =>
-    request("/teams/upsert", { method: "POST", body: payload }),
+  teamUpsert: (payload) => request("/teams/upsert", { method: "POST", body: payload }),
 
-  // Picks
   picksList: () => request("/picks"),
   makePick: (payload) => request("/picks", { method: "POST", body: payload }),
   undoPick: (pickId) => request(`/picks/${pickId}`, { method: "DELETE" }),
 
-  // Suggestions
   suggestions: (pos = null, opts = {}) => {
     const q = pos ? `?position=${encodeURIComponent(pos)}` : "";
     return request(`/suggestions${q}`, opts);
   },
 
-  // Admin imports (new)
-  importDemo: () =>
-    request("/admin/import/demo", { method: "POST", headers: ADMIN_HEADERS }),
+  importDemo: () => request("/admin/import/demo", { method: "POST", headers: ADMIN_HEADERS }),
   importCsv: (absPath) =>
     request(`/admin/import/csv?path=${encodeURIComponent(absPath)}`, {
       method: "POST",
@@ -80,6 +63,13 @@ export const api = {
       method: "POST",
       headers: ADMIN_HEADERS,
     }),
+  importInjuriesCBS: (season) =>
+    request(`/admin/import/injuries_cbs?season=${season}`, {
+      method: "POST",
+      headers: ADMIN_HEADERS,
+    }),
+
+  // Optional FantasyPros endpoints (backend gated by DA_ENABLE_FP_IMPORTS)
   importFPECRCsv: (season, path) =>
     request(
       `/admin/import/fp_ecr_csv?season=${season}&path=${encodeURIComponent(path)}`,
@@ -97,34 +87,22 @@ export const api = {
       )}&source=${encodeURIComponent(source)}`,
       { method: "POST", headers: ADMIN_HEADERS }
     ),
-  importInjuriesCBS: (season) =>
-    request(`/admin/import/injuries_cbs?season=${season}`, {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-    }),
 
-  // Enriched players
   playersEnriched: (season, position = "") =>
     request(
-      `/meta/players_enriched?season=${season}${
-        position ? `&position=${encodeURIComponent(position)}` : ""
+      `/meta/players_enriched?season=${season}${position ? `&position=${encodeURIComponent(position)}` : ""
       }`
     ),
 
-  // Edits
   setTier: (player_id, tier) =>
-    request(
-      `/edits/tier/${encodeURIComponent(player_id)}?tier=${
-        tier ?? ""
-      }`,
-      { method: "POST" }
-    ),
+    request(`/edits/tier/${encodeURIComponent(player_id)}?tier=${tier ?? ""}`, {
+      method: "POST",
+    }),
   addNote: (player_id, text, team_slot_id = null) =>
     request(
       `/edits/notes?player_id=${encodeURIComponent(
         player_id
-      )}&text=${encodeURIComponent(text)}${
-        team_slot_id ? `&team_slot_id=${team_slot_id}` : ""
+      )}&text=${encodeURIComponent(text)}${team_slot_id ? `&team_slot_id=${team_slot_id}` : ""
       }`,
       { method: "POST" }
     ),
@@ -132,5 +110,4 @@ export const api = {
     request(`/edits/notes?player_id=${encodeURIComponent(player_id)}`),
 };
 
-// Optional: export the effective base for quick debugging in UI header
 export const API_BASE_EFFECTIVE = API;

@@ -5,6 +5,8 @@ import { PlayerRow } from "./components/PlayerRow";
 import { PlayerTable } from "./components/PlayerTable";
 import { POSITIONS } from "./lib/constants";
 
+const SHOW_FP_IMPORTS = import.meta.env.VITE_FEATURE_FP_IMPORTS === "1";
+
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
@@ -63,12 +65,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    reloadAll(); // initial load
+    reloadAll();
     // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
-    // when position changes, refresh suggestions and enriched table
     (async () => {
       try {
         const sug = await api.suggestions(positionFilter || null);
@@ -122,7 +123,6 @@ export default function App() {
     alert("Note added.");
   };
 
-  // Admin import buttons
   const runImport = async (fn, label) => {
     try {
       await fn();
@@ -173,7 +173,7 @@ export default function App() {
             </button>
             <button
               onClick={async () => {
-                await api.importDemo(); // still handy for quick testing
+                await api.importDemo();
                 await reloadAll();
               }}
             >
@@ -199,59 +199,61 @@ export default function App() {
             </select>
           </div>
 
-          <div style={{ marginTop: 12, textAlign: "left" }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>FantasyPros Imports (optional)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-              <input
-                placeholder="Path to FantasyPros ECR CSV (on server)"
-                value={ecrCsvPath}
-                onChange={(e) => setEcrCsvPath(e.target.value)}
-              />
-              <button
-                onClick={() =>
-                  runImport(
-                    () => api.importFPECRCsv(season, ecrCsvPath),
-                    "FP ECR CSV"
-                  )
-                }
-              >
-                Import ECR CSV
-              </button>
-            </div>
+          {SHOW_FP_IMPORTS && (
+            <div style={{ marginTop: 12, textAlign: "left" }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>FantasyPros Imports (optional)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+                <input
+                  placeholder="Path to FantasyPros ECR CSV (on server)"
+                  value={ecrCsvPath}
+                  onChange={(e) => setEcrCsvPath(e.target.value)}
+                />
+                <button
+                  onClick={() =>
+                    runImport(
+                      () => api.importFPECRCsv(season, ecrCsvPath),
+                      "FP ECR CSV"
+                    )
+                  }
+                >
+                  Import ECR CSV
+                </button>
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-              <input
-                placeholder="FantasyPros ECR overall URL (HTML scrape fallback)"
-                value={ecrHtmlUrl}
-                onChange={(e) => setEcrHtmlUrl(e.target.value)}
-              />
-              <button
-                onClick={() =>
-                  runImport(() => api.importFPECRHtml(season, ecrHtmlUrl), "FP ECR HTML")
-                }
-              >
-                Scrape ECR HTML
-              </button>
-            </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+                <input
+                  placeholder="FantasyPros ECR overall URL (HTML scrape fallback)"
+                  value={ecrHtmlUrl}
+                  onChange={(e) => setEcrHtmlUrl(e.target.value)}
+                />
+                <button
+                  onClick={() =>
+                    runImport(() => api.importFPECRHtml(season, ecrHtmlUrl), "FP ECR HTML")
+                  }
+                >
+                  Scrape ECR HTML
+                </button>
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-              <input
-                placeholder="Path to FantasyPros ADP CSV (on server)"
-                value={adpCsvPath}
-                onChange={(e) => setAdpCsvPath(e.target.value)}
-              />
-              <button
-                onClick={() =>
-                  runImport(
-                    () => api.importFPADPCsv(season, adpCsvPath, "fp_composite"),
-                    "FP ADP CSV"
-                  )
-                }
-              >
-                Import ADP CSV
-              </button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                <input
+                  placeholder="Path to FantasyPros ADP CSV (on server)"
+                  value={adpCsvPath}
+                  onChange={(e) => setAdpCsvPath(e.target.value)}
+                />
+                <button
+                  onClick={() =>
+                    runImport(
+                      () => api.importFPADPCsv(season, adpCsvPath, "fp_composite"),
+                      "FP ADP CSV"
+                    )
+                  }
+                >
+                  Import ADP CSV
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </Section>
 
         <Section title="Make Pick (manual form)">

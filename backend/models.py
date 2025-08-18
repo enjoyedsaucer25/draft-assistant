@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+
 from .db import Base
 
 
@@ -30,7 +31,6 @@ class Player(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
-
     # External IDs (optional)
     sleeper_id: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
     fp_id: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
@@ -87,8 +87,8 @@ class Source(Base):
     __tablename__ = "sources"
 
     source_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)  # 'sleeper','fantasypros','cbs'
-    kind: Mapped[Optional[str]] = mapped_column(String, nullable=True)      # 'players','ecr','adp','injuries','projections'
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)   # 'sleeper','fantasypros','cbs'
+    kind: Mapped[Optional[str]] = mapped_column(String, nullable=True)       # 'players','ecr','adp','injuries','projections'
 
 
 class ImportRun(Base):
@@ -107,9 +107,7 @@ class ADP(Base):
     __tablename__ = "adp"
 
     season: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[str] = mapped_column(
-        String, ForeignKey("players.player_id"), primary_key=True
-    )
+    player_id: Mapped[str] = mapped_column(String, ForeignKey("players.player_id"), primary_key=True)
     source: Mapped[str] = mapped_column(String, primary_key=True)  # 'fp_composite','espn', etc
     adp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rank: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -121,20 +119,22 @@ class Projection(Base):
     __tablename__ = "projections"
 
     season: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[str] = mapped_column(
-        String, ForeignKey("players.player_id"), primary_key=True
-    )
+    player_id: Mapped[str] = mapped_column(String, ForeignKey("players.player_id"), primary_key=True)
     source: Mapped[str] = mapped_column(String, primary_key=True)   # 'fp','fantasysharks', etc
 
     projected_points: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Passing
     pass_yd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pass_td: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pass_int: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Rushing
     rush_yd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rush_td: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Receiving
     rec_rec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rec_yd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rec_td: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Kicking
     fg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     xp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
@@ -145,9 +145,7 @@ class Injury(Base):
     __tablename__ = "injuries"
 
     season: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[str] = mapped_column(
-        String, ForeignKey("players.player_id"), primary_key=True
-    )
+    player_id: Mapped[str] = mapped_column(String, ForeignKey("players.player_id"), primary_key=True)
     source: Mapped[str] = mapped_column(String, primary_key=True)   # 'cbs'
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     body_part: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -160,13 +158,9 @@ class Injury(Base):
 class TierOverride(Base):
     __tablename__ = "tier_overrides"
 
-    player_id: Mapped[str] = mapped_column(
-        String, ForeignKey("players.player_id"), primary_key=True
-    )
+    player_id: Mapped[str] = mapped_column(String, ForeignKey("players.player_id"), primary_key=True)
     tier_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Note(Base):
