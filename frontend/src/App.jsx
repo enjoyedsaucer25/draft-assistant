@@ -5,8 +5,6 @@ import { PlayerRow } from "./components/PlayerRow";
 import { PlayerTable } from "./components/PlayerTable";
 import { POSITIONS } from "./lib/constants";
 
-const SHOW_FP_IMPORTS = import.meta.env.VITE_FEATURE_FP_IMPORTS === "1";
-
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
@@ -18,12 +16,12 @@ export default function App() {
   const [playersTable, setPlayersTable] = useState([]);
   const [season] = useState(2025);
 
-  // Admin import helpers
-  const [ecrCsvPath, setEcrCsvPath] = useState("");
-  const [adpCsvPath, setAdpCsvPath] = useState("");
-  const [ecrHtmlUrl, setEcrHtmlUrl] = useState(
-    "https://www.fantasypros.com/nfl/rankings/consensus-cheatsheets.php"
+  // --- FP scraper inputs (we keep these) ---
+  const [fpScriptPath, setFpScriptPath] = useState("fp_pull_half_ppr.py");
+  const [fpUrl, setFpUrl] = useState(
+    "https://www.fantasypros.com/nfl/rankings/half-point-ppr-cheatsheets.php"
   );
+  const [fpHeadful, setFpHeadful] = useState(false);
 
   const [makePickForm, setMakePickForm] = useState({
     round_no: 1,
@@ -65,11 +63,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    reloadAll();
+    reloadAll(); // initial load
     // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
+    // when position changes, refresh suggestions and enriched table
     (async () => {
       try {
         const sug = await api.suggestions(positionFilter || null);
@@ -123,6 +122,7 @@ export default function App() {
     alert("Note added.");
   };
 
+  // Simple helper for admin imports that DO exist
   const runImport = async (fn, label) => {
     try {
       await fn();
@@ -130,6 +130,21 @@ export default function App() {
       alert(`${label}: ok`);
     } catch (e) {
       alert(`${label}: ${e.message}`);
+    }
+  };
+
+  const runFpScraper = async () => {
+    try {
+      await api.importFPECRViaScript({
+        season,
+        script_path: fpScriptPath,
+        url: fpUrl,
+        headful: fpHeadful,
+      });
+      await reloadAll();
+      alert("FP ECR Scraper: ok");
+    } catch (e) {
+      alert("FP ECR Scraper: " + e.message);
     }
   };
 
@@ -155,7 +170,14 @@ export default function App() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Section title="Setup">
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <button onClick={initTeams}>Init 12 Teams</button>
             <button
               onClick={() =>
@@ -199,61 +221,52 @@ export default function App() {
             </select>
           </div>
 
-          {SHOW_FP_IMPORTS && (
-            <div style={{ marginTop: 12, textAlign: "left" }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>FantasyPros Imports (optional)</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-                <input
-                  placeholder="Path to FantasyPros ECR CSV (on server)"
-                  value={ecrCsvPath}
-                  onChange={(e) => setEcrCsvPath(e.target.value)}
-                />
-                <button
-                  onClick={() =>
-                    runImport(
-                      () => api.importFPECRCsv(season, ecrCsvPath),
-                      "FP ECR CSV"
-                    )
-                  }
-                >
-                  Import ECR CSV
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-                <input
-                  placeholder="FantasyPros ECR overall URL (HTML scrape fallback)"
-                  value={ecrHtmlUrl}
-                  onChange={(e) => setEcrHtmlUrl(e.target.value)}
-                />
-                <button
-                  onClick={() =>
-                    runImport(() => api.importFPECRHtml(season, ecrHtmlUrl), "FP ECR HTML")
-                  }
-                >
-                  Scrape ECR HTML
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                <input
-                  placeholder="Path to FantasyPros ADP CSV (on server)"
-                  value={adpCsvPath}
-                  onChange={(e) => setAdpCsvPath(e.target.value)}
-                />
-                <button
-                  onClick={() =>
-                    runImport(
-                      () => api.importFPADPCsv(season, adpCsvPath, "fp_composite"),
-                      "FP ADP CSV"
-                    )
-                  }
-                >
-                  Import ADP CSV
-                </button>
-              </div>
+          {/* --- Keep only the FP Scraper block --- */}
+          <div style={{ marginTop: 12, textAlign: "left" }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              Run FP Scraper (Playwright → CSV → Import)
             </div>
-          )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <input
+                placeholder="Path to your scraper script (server path)"
+                value={fpScriptPath}
+                onChange={(e) => setFpScriptPath(e.target.value)}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <input
+                placeholder="FantasyPros URL to scrape"
+                value={fpUrl}
+                onChange={(e) => setFpUrl(e.target.value)}
+              />
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={fpHeadful}
+                  onChange={(e) => setFpHeadful(e.target.checked)}
+                />
+                Headful
+              </label>
+            </div>
+
+            <button onClick={runFpScraper}>Run FP ECR Scraper</button>
+          </div>
         </Section>
 
         <Section title="Make Pick (manual form)">
