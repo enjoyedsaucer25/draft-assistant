@@ -1,117 +1,71 @@
 // frontend/src/api.js
 
-// If VITE_API_URL is set, we call that directly.
-// If it's empty/undefined, we use the Vite dev proxy at "/api".
 const BASE = import.meta.env.VITE_API_URL || "";
 const API = BASE || "/api";
 
-// Normalize base + path so we never emit "//" or miss a slash.
 const join = (base, path) =>
   `${String(base).replace(/\/+$/, "")}/${String(path || "").replace(/^\/+/, "")}`;
 
-// Safe JSON parser: returns {} for empty; throws with context on bad JSON
 async function parseJSON(res) {
   const text = await res.text();
   if (!text) return {};
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new Error(
-      `Bad JSON from ${res.url} (status ${res.status}): ${text.slice(0, 200)}`
-    );
+    throw new Error(`Bad JSON (${res.status} ${res.statusText}): ${text.slice(0, 300)}`);
   }
 }
 
-// Pull admin token from env and prepare default headers
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
-const ADMIN_HEADERS = ADMIN_TOKEN ? { "x-token": ADMIN_TOKEN } : {};
-
-// Core request helper with good errors
-async function request(path, { method = "GET", body, headers = {} } = {}) {
+async function request(path, init) {
   const url = join(API, path);
   const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json", ...headers },
-    body: body ? JSON.stringify(body) : undefined,
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init && init.headers),
+    },
   });
-
   if (!res.ok) {
-    let msg = "";
-    try {
-      msg = await res.text();
-    } catch (_) { }
-    throw new Error(`HTTP ${res.status} on ${url}: ${msg || res.statusText}`);
+    const body = await res.text();
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${body}`);
   }
-
   return parseJSON(res);
 }
 
-// Public API
 export const api = {
   health: () => request("/health"),
 
-  // Teams
-  teamsInit: () => request("/teams/init", { method: "POST" }),
-  teamsList: () => request("/teams"),
-  teamUpsert: (payload) =>
-    request("/teams/upsert", { method: "POST", body: payload }),
-
-  // Picks
-  picksList: () => request("/picks"),
-  makePick: (payload) => request("/picks", { method: "POST", body: payload }),
-  undoPick: (pickId) => request(`/picks/${pickId}`, { method: "DELETE" }),
-
-  // Suggestions
-  suggestions: (pos = null, opts = {}) => {
-    const q = pos ? `?position=${encodeURIComponent(pos)}` : "";
-    return request(`/suggestions${q}`, opts);
+  meta: {
+    playersEnriched: ({ season, position = "", q = "", limit = 300 }) =>
+      request(
+        `/meta/players_enriched?season=${season}${position ? `&position=${encodeURIComponent(position)}` : ""
+        }${q ? `&q=${encodeURIComponent(q)}` : ""}&limit=${limit}`
+      ),
   },
 
-  // Admin imports (still available)
-  importDemo: () =>
-    request("/admin/import/demo", { method: "POST", headers: ADMIN_HEADERS }),
-  importSleeperPlayers: (season) =>
-    request(`/admin/import/sleeper_players?season=${season}`, {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-    }),
-  importInjuriesCBS: (season) =>
-    request(`/admin/import/injuries_cbs?season=${season}`, {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-    }),
+  teams: {
+    init: () => request(`/teams/init`, { method: "POST" }),
+    list: () => request(`/teams/list`),
+    upsert: (team) => request(`/teams/upsert`, { method: "POST", body: JSON.stringify(team) }),
+  },
 
-  // Your FP scraper runner (Playwright -> CSV -> DB ingest)
-  importFPECRViaScript: ({ season, script_path, url, headful = false }) =>
-    request(`/admin/import/fp_ecr_via_script`, {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-      body: { season, script_path, url, headful },
-    }),
+  picks: {
+    list: () => request(`/picks`),
+    create: (payload) => request(`/picks`, { method: "POST", body: JSON.stringify(payload) }),
+    delete: (pick_id) => request(`/picks/${pick_id}`, { method: "DELETE" }),
+  },
 
-  // Enriched players
-  playersEnriched: (season, position = "") =>
-    request(
-      `/meta/players_enriched?season=${season}${position ? `&position=${encodeURIComponent(position)}` : ""
-      }`
-    ),
-
-  // Edits
-  setTier: (player_id, tier) =>
-    request(`/edits/tier/${encodeURIComponent(player_id)}?tier=${tier ?? ""}`, {
-      method: "POST",
-    }),
-  addNote: (player_id, text, team_slot_id = null) =>
-    request(
-      `/edits/notes?player_id=${encodeURIComponent(
-        player_id
-      )}&text=${encodeURIComponent(text)}${team_slot_id ? `&team_slot_id=${team_slot_id}` : ""
-      }`,
-      { method: "POST" }
-    ),
-  listNotes: (player_id) =>
-    request(`/edits/notes?player_id=${encodeURIComponent(player_id)}`),
+  // --- admin imports ---
+  admin: {
+    fpEcr: (season) =>
+      request(`/admin/import/fp_ecr_via_script${season ? `?season=${season}` : ""}`, {
+        method: "POST",
+      }),
+    runAll: (season) =>
+      request(`/admin/import/run_all${season ? `?season=${season}` : ""}`, {
+        method: "POST",
+      }),
+  },
 };
 
-// Optional: export the effective base for quick debugging in UI header
 export const API_BASE_EFFECTIVE = API;

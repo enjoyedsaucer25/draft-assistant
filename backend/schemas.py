@@ -1,7 +1,6 @@
 # backend/schemas.py
 from __future__ import annotations
-from typing import Optional, Literal
-
+from typing import Optional, Literal, List
 from pydantic import BaseModel
 
 
@@ -21,10 +20,7 @@ class TeamIn(BaseModel):
     draft_position: int
 
 
-class TeamOut(BaseModel):
-    team_slot_id: int
-    team_name: str
-    draft_position: int
+class TeamOut(TeamIn):
     class Config: from_attributes = True
 
 
@@ -35,18 +31,9 @@ class PickIn(BaseModel):
     player_id: str
 
 
-class PickOut(BaseModel):
+class PickOut(PickIn):
     pick_id: int
-    round_no: int
-    overall_no: int
-    team_slot_id: int
-    player_id: str
     class Config: from_attributes = True
-
-
-class SuggestionOut(BaseModel):
-    top: list[PlayerOut]
-    next: list[PlayerOut]
 
 
 class EnrichedPlayerOut(BaseModel):
@@ -57,7 +44,13 @@ class EnrichedPlayerOut(BaseModel):
     ecr: Optional[float] = None
     ecr_pos: Optional[float] = None
     tier: Optional[int] = None
-    tier_source: Literal["core", "override"]
+    tier_source: Literal["core", "override"] = "core"
     adp: Optional[float] = None
     injury_status: Optional[str] = None
     injury_body: Optional[str] = None
+    proj_pts: Optional[float] = None  # NEW
+
+
+class SuggestionOut(BaseModel):
+    top: List[PlayerOut]
+    next: List[PlayerOut]

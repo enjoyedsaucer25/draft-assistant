@@ -1,4 +1,3 @@
-# backend/ingest/sources/sleeper_players.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,7 +9,6 @@ from ... import models
 
 URL = "https://api.sleeper.app/v1/players/nfl"
 
-
 def get_or_create_source(db: Session, name: str, kind: str) -> models.Source:
     src = db.query(models.Source).filter_by(name=name).first()
     if not src:
@@ -19,7 +17,6 @@ def get_or_create_source(db: Session, name: str, kind: str) -> models.Source:
         db.commit()
         db.refresh(src)
     return src
-
 
 def import_sleeper_players(db: Session, season: int) -> dict:
     """
@@ -40,7 +37,7 @@ def import_sleeper_players(db: Session, season: int) -> dict:
             data = resp.json()
 
         count = 0
-        for sid, pl in data.items():
+        for pl in data.values():
             full_name = pl.get("full_name") or ""
             pos = pl.get("position") or ""
             if not full_name or not pos:
@@ -50,8 +47,10 @@ def import_sleeper_players(db: Session, season: int) -> dict:
             clean_name = full_name.strip()
             player_id = pl.get("player_id") or f"{pos.lower()}.{clean_name.lower().replace(' ', '')}"
 
-            p = db.query(models.Player).filter_by(player_id=player_id).first()
+            # Direct primary key lookup for efficiency
+            p = db.get(models.Player, player_id)
             if not p:
+                # Create new player record
                 p = models.Player(
                     player_id=player_id,
                     season=season,
@@ -65,6 +64,7 @@ def import_sleeper_players(db: Session, season: int) -> dict:
                 )
                 db.add(p)
             else:
+                # Update existing player record
                 p.season = season
                 p.clean_name = clean_name
                 p.position = pos

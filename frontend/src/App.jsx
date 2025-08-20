@@ -1,393 +1,179 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, API_BASE_EFFECTIVE } from "./api";
 import { Section } from "./components/Section";
-import { PlayerRow } from "./components/PlayerRow";
 import { PlayerTable } from "./components/PlayerTable";
 import { POSITIONS } from "./lib/constants";
 
+const TEAMS = 12;
+
 export default function App() {
   const [loading, setLoading] = useState(false);
-  const [health, setHealth] = useState(null);
+  const [busy, setBusy] = useState(false); // spinner for runAll
+  const [debug, setDebug] = useState([]);  // debug console lines
   const [teams, setTeams] = useState([]);
   const [picks, setPicks] = useState([]);
-  const [suggestTop, setSuggestTop] = useState([]);
-  const [suggestNext, setSuggestNext] = useState([]);
-  const [positionFilter, setPositionFilter] = useState("");
-  const [playersTable, setPlayersTable] = useState([]);
-  const [season] = useState(2025);
+  const [position, setPosition] = useState("");
+  const [q, setQ] = useState("");
+  const [players, setPlayers] = useState([]);
+  const [season, setSeason] = useState(new Date().getFullYear());
 
-  // --- FP scraper inputs (we keep these) ---
-  const [fpScriptPath, setFpScriptPath] = useState("fp_pull_half_ppr.py");
-  const [fpUrl, setFpUrl] = useState(
-    "https://www.fantasypros.com/nfl/rankings/half-point-ppr-cheatsheets.php"
-  );
-  const [fpHeadful, setFpHeadful] = useState(false);
+  const overallNext = picks.length + 1;
+  const roundNext = Math.ceil(overallNext / TEAMS);
 
-  const [makePickForm, setMakePickForm] = useState({
-    round_no: 1,
-    overall_no: 1,
-    team_slot_id: 1,
-    player_id: "",
-  });
-
-  const reloadAll = async () => {
+  async function boot() {
     setLoading(true);
     try {
-      const [h, t, pk, sug] = await Promise.all([
-        api.health(),
-        api.teamsList(),
-        api.picksList(),
-        api.suggestions(positionFilter || null),
-      ]);
-      setHealth(h);
+      await api.teams.init();
+      const [t, p] = await Promise.all([api.teams.list(), api.picks.list()]);
       setTeams(t);
-      setPicks(pk);
-      setSuggestTop(sug.top || []);
-      setSuggestNext(sug.next || []);
-      await loadPlayersTable();
-    } catch (e) {
-      console.error(e);
-      alert("Error: " + e.message);
+      setPicks(p);
+      await loadPlayers({ season, position, q });
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const loadPlayersTable = async () => {
-    try {
-      const rows = await api.playersEnriched(season, positionFilter || "");
-      setPlayersTable(rows);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  async function loadPlayers({ season, position, q }) {
+    const rows = await api.meta.playersEnriched({ season, position, q, limit: 500 });
+    setPlayers(rows);
+  }
 
   useEffect(() => {
-    reloadAll(); // initial load
-    // eslint-disable-next-line
+    boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    // when position changes, refresh suggestions and enriched table
-    (async () => {
-      try {
-        const sug = await api.suggestions(positionFilter || null);
-        setSuggestTop(sug.top || []);
-        setSuggestNext(sug.next || []);
-        await loadPlayersTable();
-      } catch (e) {
-        console.error(e);
-      }
-    })();
-  }, [positionFilter]);
-
-  const nextOverall = useMemo(
-    () => (picks.length ? Math.max(...picks.map((p) => p.overall_no)) + 1 : 1),
-    [picks]
-  );
-
-  const initTeams = async () => {
-    await api.teamsInit();
-    await reloadAll();
-  };
-
-  const onPick = async (player) => {
+  async function makePick(player_id) {
     const payload = {
-      round_no: makePickForm.round_no,
-      overall_no: makePickForm.overall_no || nextOverall,
-      team_slot_id: makePickForm.team_slot_id,
-      player_id: player?.player_id || makePickForm.player_id,
+      player_id,
+      team_slot_id: 1, // your team for now
+      overall_no: overallNext,
+      round_no: roundNext,
     };
+    const pk = await api.picks.create(payload);
+    setPicks((prev) => [...prev, pk]);
+  }
+
+  async function undoPick(pick_id) {
+    await api.picks.delete(pick_id);
+    setPicks((prev) => prev.filter((p) => p.pick_id !== pick_id));
+  }
+
+  async function runFullUpdate() {
+    setBusy(true);
+    setDebug((d) => [
+      ...d,
+      `Starting full data update for season ${season}...`,
+    ]);
     try {
-      await api.makePick(payload);
-      setMakePickForm((f) => ({ ...f, overall_no: payload.overall_no + 1 }));
-      await reloadAll();
+      const res = await api.admin.runAll(season);
+      const lines = [];
+      for (const step of res.logs || []) {
+        lines.push(
+          `STEP: ${step.step} | ok=${step.ok} code=${step.code ?? "n/a"}`
+        );
+        if (step.cmd) lines.push(`CMD: ${Array.isArray(step.cmd) ? step.cmd.join(" ") : step.cmd}`);
+        if (step.stdout) lines.push(`STDOUT:\n${step.stdout}`);
+        if (step.stderr) lines.push(`STDERR:\n${step.stderr}`);
+      }
+      setDebug((d) => [...d, ...lines]);
+      // Reload players after update
+      await loadPlayers({ season, position, q });
     } catch (e) {
-      alert("Pick failed: " + e.message);
+      setDebug((d) => [...d, `ERROR: ${String(e)}`]);
+    } finally {
+      setBusy(false);
     }
-  };
+  }
 
-  const undo = async (pickId) => {
-    await api.undoPick(pickId);
-    await reloadAll();
-  };
-
-  const onTier = async (row, tierVal) => {
-    await api.setTier(row.player_id, tierVal);
-    await loadPlayersTable();
-  };
-
-  const onNote = async (row, text) => {
-    await api.addNote(row.player_id, text, null);
-    alert("Note added.");
-  };
-
-  // Simple helper for admin imports that DO exist
-  const runImport = async (fn, label) => {
-    try {
-      await fn();
-      await reloadAll();
-      alert(`${label}: ok`);
-    } catch (e) {
-      alert(`${label}: ${e.message}`);
-    }
-  };
-
-  const runFpScraper = async () => {
-    try {
-      await api.importFPECRViaScript({
-        season,
-        script_path: fpScriptPath,
-        url: fpUrl,
-        headful: fpHeadful,
-      });
-      await reloadAll();
-      alert("FP ECR Scraper: ok");
-    } catch (e) {
-      alert("FP ECR Scraper: " + e.message);
-    }
-  };
+  const headerStyle = { display: "flex", gap: 12, alignItems: "center", marginBottom: 12 };
 
   return (
-    <div
-      style={{
-        padding: 16,
-        fontFamily: "system-ui, Arial",
-        color: "#ddd",
-        background: "#0e0e10",
-        minHeight: "100vh",
-      }}
-    >
-      <h2>Draft Room</h2>
-      <div style={{ marginBottom: 12, opacity: 0.85 }}>
-        API: <code>{API_BASE_EFFECTIVE || "(proxy /api)"}</code>
-        &nbsp;|&nbsp; Health: {health ? "OK" : "…"}
-        &nbsp;|&nbsp;
-        <button onClick={reloadAll} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
+    <div style={{ padding: 16, color: "#eaeaea" }}>
+      <div style={headerStyle}>
+        <h2 style={{ margin: 0 }}>Draft Assistant</h2>
+        <span style={{ opacity: 0.7 }}>API: {API_BASE_EFFECTIVE || "(proxy /api)"} </span>
+        <div style={{ flex: 1 }} />
+        <label>
+          Season:&nbsp;
+          <input
+            type="number"
+            value={season}
+            onChange={(e) => setSeason(parseInt(e.target.value || new Date().getFullYear(), 10))}
+            style={{ width: 90 }}
+          />
+        </label>
+        <select value={position} onChange={(e) => setPosition(e.target.value)}>
+          <option value="">All</option>
+          {POSITIONS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder="Search name/team..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") loadPlayers({ season, position, q });
+          }}
+          style={{ width: 220 }}
+        />
+        <button onClick={() => loadPlayers({ season, position, q })}>Refresh</button>
+        <button onClick={runFullUpdate} disabled={busy} style={{ background: "#2b7", opacity: busy ? 0.7 : 1 }}>
+          {busy ? "Updating…" : "Full Data Update"}
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Section title="Setup">
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button onClick={initTeams}>Init 12 Teams</button>
-            <button
-              onClick={() =>
-                runImport(() => api.importSleeperPlayers(season), "Sleeper Players")
-              }
-            >
-              Import Sleeper Players
-            </button>
-            <button
-              onClick={() =>
-                runImport(() => api.importInjuriesCBS(season), "CBS Injuries")
-              }
-            >
-              Import CBS Injuries
-            </button>
-            <button
-              onClick={async () => {
-                await api.importDemo();
-                await reloadAll();
-              }}
-            >
-              Seed Demo Players
-            </button>
-            <span style={{ opacity: 0.75 }}>
-              Teams: {teams.length} | Picks: {picks.length}
-            </span>
-          </div>
+      {busy && (
+        <div style={{ marginBottom: 12, padding: 8, background: "#222", border: "1px solid #333" }}>
+          <span className="spinner" style={{ marginRight: 8 }}>⏳</span>
+          Running scrapers and imports… please wait.
+        </div>
+      )}
 
-          <div style={{ marginTop: 8 }}>
-            <label>Position filter:&nbsp;</label>
-            <select
-              value={positionFilter}
-              onChange={(e) => setPositionFilter(e.target.value)}
-            >
-              <option value="">All</option>
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* --- Keep only the FP Scraper block --- */}
-          <div style={{ marginTop: 12, textAlign: "left" }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>
-              Run FP Scraper (Playwright → CSV → Import)
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <input
-                placeholder="Path to your scraper script (server path)"
-                value={fpScriptPath}
-                onChange={(e) => setFpScriptPath(e.target.value)}
-              />
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <input
-                placeholder="FantasyPros URL to scrape"
-                value={fpUrl}
-                onChange={(e) => setFpUrl(e.target.value)}
-              />
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={fpHeadful}
-                  onChange={(e) => setFpHeadful(e.target.checked)}
-                />
-                Headful
-              </label>
-            </div>
-
-            <button onClick={runFpScraper}>Run FP ECR Scraper</button>
-          </div>
-        </Section>
-
-        <Section title="Make Pick (manual form)">
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 8,
-            }}
-          >
-            <div>
-              <div>Round</div>
-              <input
-                type="number"
-                value={makePickForm.round_no}
-                onChange={(e) =>
-                  setMakePickForm((f) => ({
-                    ...f,
-                    round_no: Number(e.target.value),
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <div>Overall</div>
-              <input
-                type="number"
-                value={makePickForm.overall_no || nextOverall}
-                onChange={(e) =>
-                  setMakePickForm((f) => ({
-                    ...f,
-                    overall_no: Number(e.target.value),
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <div>Team Slot</div>
-              <input
-                type="number"
-                value={makePickForm.team_slot_id}
-                onChange={(e) =>
-                  setMakePickForm((f) => ({
-                    ...f,
-                    team_slot_id: Number(e.target.value),
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <div>Player ID</div>
-              <input
-                value={makePickForm.player_id}
-                onChange={(e) =>
-                  setMakePickForm((f) => ({
-                    ...f,
-                    player_id: e.target.value,
-                  }))
-                }
-              />
-            </div>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={() => onPick(null)}>Make Pick From Form</button>
-          </div>
-        </Section>
-
-        <Section title="Suggestions — Top 3">
-          {suggestTop.length === 0 ? (
-            <div>No suggestions</div>
-          ) : (
-            suggestTop.map((p) => (
-              <PlayerRow key={p.player_id} p={p} onPick={onPick} />
-            ))
-          )}
-        </Section>
-
-        <Section title="Next 10">
-          {suggestNext.length === 0 ? (
-            <div>—</div>
-          ) : (
-            suggestNext.map((p) => (
-              <PlayerRow key={p.player_id} p={p} onPick={onPick} />
-            ))
-          )}
-        </Section>
-
-        <Section title="Players (Rank/Tier/ADP/Injuries)">
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+        <Section title="Players">
           <PlayerTable
-            rows={playersTable}
-            onPick={onPick}
-            onTier={onTier}
-            onNote={onNote}
+            rows={players}
+            onPick={makePick}
+            onTier={(player_id, tier) =>
+              fetch(`/api/edits/tier/${encodeURIComponent(player_id)}?season=${season}&tier=${tier ?? ""}`, {
+                method: "POST",
+              }).then(() => loadPlayers({ season, position, q }))
+            }
+            onNote={(player_id, text) =>
+              fetch(`/api/edits/notes?player_id=${encodeURIComponent(player_id)}&text=${encodeURIComponent(text)}`, {
+                method: "POST",
+              })
+            }
           />
         </Section>
 
-        <Section title="Picks">
-          {picks.length === 0 ? (
-            <div>No picks yet</div>
-          ) : (
-            picks.map((pk) => (
-              <div
-                key={pk.pick_id}
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  padding: "6px 0",
-                  borderBottom: "1px solid #222",
-                }}
-              >
-                <div style={{ width: 80 }}>#{pk.overall_no}</div>
-                <div style={{ width: 60 }}>Rnd {pk.round_no}</div>
-                <div style={{ width: 80 }}>Team {pk.team_slot_id}</div>
-                <div style={{ width: 240 }}>{pk.player_id}</div>
-                <div style={{ flex: 1 }} />
-                <button onClick={() => undo(pk.pick_id)}>Undo</button>
-              </div>
-            ))
-          )}
-        </Section>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Section title="Your Next Pick">
+            <div>Overall #{overallNext} (Round {roundNext})</div>
+          </Section>
+
+          <Section title="Debug Console">
+            <div
+              style={{
+                background: "#0f0f0f",
+                border: "1px solid #222",
+                borderRadius: 8,
+                padding: 8,
+                height: 320,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                fontSize: 12,
+              }}
+            >
+              {debug.length ? debug.join("\n\n") : "No logs yet."}
+            </div>
+          </Section>
+        </div>
       </div>
     </div>
   );

@@ -167,13 +167,10 @@ async def download_csv(url: str, save_to: str, headful: bool = False) -> Optiona
 # -------------------------
 async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
     async with async_playwright() as pw:
+        # Launch a single browser instance for scraping
         browser = await pw.chromium.launch(headless=not headful)
-        ctx = await pw.chromium.launch_persistent_context(user_data_dir="", headless=not headful) if False else await pw.chromium.launch(headless=not headful)  # simple
-        # use normal context
-        await browser.close()  # clean the accidental one above
-        browser = await pw.chromium.launch(headless=not headful)
-        ctx = await browser.new_context()
-        page = await ctx.new_page()
+        context = await browser.new_context()
+        page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded")
 
         # try dismiss common consent banners
@@ -188,8 +185,8 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
         stable_hits = 0
         BUTTON_LABELS = ["Show More", "Load More", "More", "Show all", "View all", "Next", "Show All", "See More"]
         for _ in range(60):  # hard cap
-            # try clicking any visible "more/next"
             clicked = False
+            # try clicking any visible "Show More/Next" button
             for label in BUTTON_LABELS:
                 try:
                     btn = page.get_by_role("button", name=label, exact=False).first
@@ -201,7 +198,6 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
                         break
                 except Exception:
                     pass
-
             # also try common link-style controls
             if not clicked:
                 for label in ["Next", "More", "Show More", "Show All"]:
@@ -216,11 +212,11 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
                     except Exception:
                         pass
 
-            # scroll to bottom to trigger lazy-load, even if we didn't click
+            # scroll to bottom to trigger lazy-load
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(800)
 
-            # check current count
+            # check if new rows loaded
             count = await page.evaluate("""
             () => {
               const t = Array.from(document.querySelectorAll('table')).find(x => x.querySelector('thead'));
@@ -233,10 +229,10 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
             else:
                 stable_hits = 0
             last_count = count
-            if stable_hits >= 3:  # stable for 3 cycles -> assume fully loaded
+            if stable_hits >= 3:  # assume fully loaded after stable count
                 break
 
-        # extract rows (including any tier headers in the flow)
+        # extract rows (including any tier header rows)
         data = await page.evaluate("""
         () => {
           const t = Array.from(document.querySelectorAll('table')).find(x => x.querySelector('thead'));
@@ -261,7 +257,7 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
             return None
 
         i_rank   = idx('rk','rank')
-        i_tier   = idx('tier','tiers')   # may exist
+        i_tier   = idx('tier','tiers')   # may or may not exist
         i_pos    = idx('pos','position')
         i_player = idx('player','player name','player_name','player team (bye)','player/team','player (team)')
         i_bye    = idx('bye','bye week')
@@ -313,11 +309,11 @@ async def scrape_main_full(url: str, headful: bool = False) -> List[Dict]:
 async def scrape_printer_friendly(url: str, headful: bool = False) -> List[Dict]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=not headful)
-        ctx = await browser.new_context()
-        page = await ctx.new_page()
+        context = await browser.new_context()
+        page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded")
 
-        # Try printer-friendly; else ?print=true
+        # Try printer-friendly view; else add ?print=true
         opened_print = False
         for text in ["Printer Friendly", "Printer-Friendly", "Print"]:
             try:
@@ -333,7 +329,6 @@ async def scrape_printer_friendly(url: str, headful: bool = False) -> List[Dict]
                 pass
 
         await page.wait_for_timeout(800)
-
         data = await page.evaluate("""
         () => {
           const table = Array.from(document.querySelectorAll('table')).find(t => t.querySelector('thead'));
